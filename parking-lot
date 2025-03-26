@@ -1,0 +1,120 @@
+import java.util.HashMap;
+import java.util.Map;
+
+// Single Responsibility Principle (SRP) - Each class has a single responsibility.
+enum VehicleType {
+    CAR, MOTORCYCLE, TRUCK
+}
+
+class Vehicle {
+    private final String licensePlate;
+    private final VehicleType type;
+
+    public Vehicle(String licensePlate, VehicleType type) {
+        this.licensePlate = licensePlate;
+        this.type = type;
+    }
+
+    public String getLicensePlate() {
+        return licensePlate;
+    }
+
+    public VehicleType getType() {
+        return type;
+    }
+}
+
+class ParkingSpot {
+    private final int spotNumber;
+    private boolean isOccupied;
+
+    public ParkingSpot(int spotNumber) {
+        this.spotNumber = spotNumber;
+        this.isOccupied = false;
+    }
+
+    public boolean isAvailable() {
+        return !isOccupied;
+    }
+
+    public void park() {
+        isOccupied = true;
+    }
+
+    public void leave() {
+        isOccupied = false;
+    }
+}
+
+// Open/Closed Principle (OCP) - The system is open for extension but closed for modification.
+interface ParkingLot {
+    boolean parkVehicle(Vehicle vehicle);
+    boolean removeVehicle(String licensePlate);
+}
+
+class SimpleParkingLot implements ParkingLot {
+    private final Map<String, ParkingSpot> occupiedSpots;
+    private final ParkingSpot[] spots;
+
+    public SimpleParkingLot(int capacity) {
+        this.spots = new ParkingSpot[capacity];
+        this.occupiedSpots = new HashMap<>();
+        for (int i = 0; i < capacity; i++) {
+            spots[i] = new ParkingSpot(i + 1);
+        }
+    }
+
+    @Override
+    public boolean parkVehicle(Vehicle vehicle) {
+        for (ParkingSpot spot : spots) {
+            if (spot.isAvailable()) {
+                spot.park();
+                occupiedSpots.put(vehicle.getLicensePlate(), spot);
+                return true;
+            }
+        }
+        return false; // No available spot
+    }
+
+    @Override
+    public boolean removeVehicle(String licensePlate) {
+        ParkingSpot spot = occupiedSpots.remove(licensePlate);
+        if (spot != null) {
+            spot.leave();
+            return true;
+        }
+        return false;
+    }
+}
+
+// Dependency Inversion Principle (DIP) - High-level modules should depend on abstractions.
+class ParkingLotManager {
+    private final ParkingLot parkingLot;
+
+    public ParkingLotManager(ParkingLot parkingLot) {
+        this.parkingLot = parkingLot;
+    }
+
+    public boolean park(Vehicle vehicle) {
+        return parkingLot.parkVehicle(vehicle);
+    }
+
+    public boolean remove(String licensePlate) {
+        return parkingLot.removeVehicle(licensePlate);
+    }
+}
+
+// Usage Example
+public class Main {
+    public static void main(String[] args) {
+        ParkingLot parkingLot = new SimpleParkingLot(5);
+        ParkingLotManager manager = new ParkingLotManager(parkingLot);
+
+        Vehicle car1 = new Vehicle("ABC-123", VehicleType.CAR);
+        Vehicle car2 = new Vehicle("XYZ-789", VehicleType.MOTORCYCLE);
+
+        System.out.println("Parking car1: " + manager.park(car1)); // true
+        System.out.println("Parking car2: " + manager.park(car2)); // true
+        System.out.println("Removing car1: " + manager.remove("ABC-123")); // true
+    }
+}
