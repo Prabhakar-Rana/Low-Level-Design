@@ -1,0 +1,127 @@
+import java.util.*;
+import java.lang.*;
+import java.io.*;
+
+enum Moves{
+    X, O
+}
+
+class Player{
+    String name;
+    Moves moves;
+    Player(String name, Moves moves){
+        this.name = name;
+        this.moves = moves;
+    }
+
+    Moves getMoves(){
+        return moves;
+    }
+}
+
+class Board{
+    List<List<Character>> board = new ArrayList<>();
+    int size = 3;
+    Board(){
+        for(int i=0;i<size;i++){
+            List<Character>ls = new ArrayList<>();
+            for(int j=0;j<size;j++){
+                ls.add('*');
+            }
+            board.add(ls);
+        }
+    }
+
+    public void displayBoard(){
+        for(int i=0;i<size;i++){
+            for(int j=0;j<size;j++){
+                System.out.print(board.get(i).get(j) + " ");
+            }
+            System.out.println();
+        }
+    }
+
+    public void addPlayerMoves(Player player, int x ,int y){
+        if(board.get(x).get(y)!='*' || x<0 || x>=3 || y<0 || y>=3){
+            System.out.println("Invalid cordinates !");
+        } else{
+            board.get(x).set(y, player.getMoves()==Moves.X? 'X': 'O');
+        }
+    }
+    public boolean checkWin(Player player){
+        char symbole = player.getMoves() == Moves.X ? 'X' : 'O';
+        for(int i=0;i<3;i++){
+            if((board.get(i).get(0)==symbole  && board.get(i).get(1)==symbole && board.get(i).get(2)==symbole) ||
+                    (board.get(0).get(i)==symbole && board.get(i).get(1)==symbole && board.get(i).get(2)==symbole)){
+                System.out.println("Player Won = " + player);
+                return true;
+            }
+            else if((board.get(i).get(0)==symbole  && board.get(i).get(1)==symbole && board.get(i).get(2)==symbole) ||
+                    (board.get(0).get(i)==symbole && board.get(i).get(1)==symbole && board.get(i).get(2)==symbole)){
+                System.out.println("Player Won = " + player);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean  filledBoard(){
+        int count = 0;
+        for(int i=0;i<3;i++){
+            for(int j=0;j<3;j++){
+                if(board.get(i).get(j)=='*'){
+                    count++;
+                }
+            }
+        }
+        if(count==0){
+            return true;
+        }else{
+            return false;
+        }
+    }
+
+}
+
+class Codechef
+{
+    Queue<Player>q = new LinkedList<>();
+    Board board;
+    Player player1;
+    Player player2;
+    Codechef(){
+        board = new Board();
+        player1 = new Player("player-1", Moves.X);
+        player2 = new Player("player-2", Moves.O);
+        q.add(player1);
+        q.add(player2);
+        startGame();
+    }
+
+    void startGame(){
+        if(board.filledBoard()){
+            System.out.println("Board get Filled !");
+        }
+        boolean endGame = false;
+        while(!endGame){
+            if(board.filledBoard()) endGame = true;
+
+            Scanner scanner = new Scanner(System.in);
+            int x = scanner.nextInt();
+            int y = scanner.nextInt();
+            Player player = q.remove();
+            if(board.checkWin(player)){
+                break;
+            }
+            board.addPlayerMoves(player, x, y);
+            q.add(player);
+            board.displayBoard();
+        }
+    }
+    public static void main (String[] args) throws java.lang.Exception
+    {
+        Codechef game = new Codechef();
+        Board b = new Board();
+        b.displayBoard();
+    }
+}
