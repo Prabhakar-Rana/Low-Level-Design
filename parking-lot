@@ -1,120 +1,134 @@
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.lang.*;
+import java.io.*;
 
-// Single Responsibility Principle (SRP) - Each class has a single responsibility.
-enum VehicleType {
-    CAR, MOTORCYCLE, TRUCK
+enum VehicleType{
+    CAR, BIKE;
 }
 
-class Vehicle {
-    private final String licensePlate;
-    private final VehicleType type;
-
-    public Vehicle(String licensePlate, VehicleType type) {
-        this.licensePlate = licensePlate;
-        this.type = type;
-    }
-
-    public String getLicensePlate() {
-        return licensePlate;
-    }
-
-    public VehicleType getType() {
-        return type;
+abstract class Vehicle{
+    VehicleType vehicleType;
+    String vehicleNumer;
+    Vehicle(String vehicleNumer){
+        this.vehicleNumer = vehicleNumer;
     }
 }
 
-class ParkingSpot {
-    private final int spotNumber;
-    private boolean isOccupied;
-
-    public ParkingSpot(int spotNumber) {
-        this.spotNumber = spotNumber;
-        this.isOccupied = false;
-    }
-
-    public boolean isAvailable() {
-        return !isOccupied;
-    }
-
-    public void park() {
-        isOccupied = true;
-    }
-
-    public void leave() {
-        isOccupied = false;
+class Bike extends Vehicle{
+    Bike(String no){
+        super(no);
+        vehicleType = VehicleType.BIKE;
     }
 }
 
-// Open/Closed Principle (OCP) - The system is open for extension but closed for modification.
-interface ParkingLot {
-    boolean parkVehicle(Vehicle vehicle);
-    boolean removeVehicle(String licensePlate);
+class Car extends Vehicle{
+     Car(String no){
+        super(no);
+        vehicleType = VehicleType.CAR;
+    }
 }
 
-class SimpleParkingLot implements ParkingLot {
-    private final Map<String, ParkingSpot> occupiedSpots;
-    private final ParkingSpot[] spots;
-
-    public SimpleParkingLot(int capacity) {
-        this.spots = new ParkingSpot[capacity];
-        this.occupiedSpots = new HashMap<>();
-        for (int i = 0; i < capacity; i++) {
-            spots[i] = new ParkingSpot(i + 1);
+class VehicleFactory{
+    public static Vehicle createVehicle(String no, VehicleType type){
+        switch(type){
+            case CAR: return new Car(no);
+            case BIKE: return new Bike(no);     
+            default: throw new IllegalArgumentException("Invalid vehicle type");
         }
     }
+}
 
-    @Override
-    public boolean parkVehicle(Vehicle vehicle) {
-        for (ParkingSpot spot : spots) {
-            if (spot.isAvailable()) {
-                spot.park();
-                occupiedSpots.put(vehicle.getLicensePlate(), spot);
-                return true;
+class Spot{
+    boolean isEmpty;
+    Spot(){
+        this.isEmpty = true;
+    }
+}
+
+class ParkingSystem{
+    List<Spot> parking = new ArrayList<>();
+    ParkingSystem(){
+        for(int i=0;i<10;i++){
+            parking.add(new Spot());
+        }
+    }
+    List<Spot>getparking(){
+        return parking;
+    }
+}
+
+class ParkingManger{
+    ParkingSystem lot;
+    ParkingManger(ParkingSystem lot){
+        this.lot = lot;
+    }
+    
+    void park(Vehicle v){
+        for(int i=0;i<lot.getparking().size();i++){
+            if(lot.getparking().get(i).isEmpty==true){
+                lot.getparking().get(i).isEmpty = false;
+                System.out.println("Vehicle parked successFully in index->" + i);
+                break;
+            } 
+        }
+    }
+    
+    void unPark(int idx){
+        if(lot.getparking().size()>idx && idx>=0){
+            if(lot.getparking().get(idx).isEmpty==true){
+                lot.getparking().get(idx).isEmpty=false;
+                System.out.println("unPark successFully !");
+            } else{
+                System.out.println("Spot already unPark !");
+            }
+        } else{
+            System.out.println("Invalid Postion !");
+        }
+    }
+    
+    void checkSpotStatus(){
+        for(int i=0;i<lot.getparking().size();i++){
+            if(lot.getparking().get(i).isEmpty==true){
+                System.out.print("true ");
+            } else{
+                System.out.print("false ");
             }
         }
-        return false; // No available spot
     }
-
-    @Override
-    public boolean removeVehicle(String licensePlate) {
-        ParkingSpot spot = occupiedSpots.remove(licensePlate);
-        if (spot != null) {
-            spot.leave();
-            return true;
-        }
-        return false;
-    }
+    
+    
 }
 
-// Dependency Inversion Principle (DIP) - High-level modules should depend on abstractions.
-class ParkingLotManager {
-    private final ParkingLot parkingLot;
-
-    public ParkingLotManager(ParkingLot parkingLot) {
-        this.parkingLot = parkingLot;
-    }
-
-    public boolean park(Vehicle vehicle) {
-        return parkingLot.parkVehicle(vehicle);
-    }
-
-    public boolean remove(String licensePlate) {
-        return parkingLot.removeVehicle(licensePlate);
-    }
+class Codechef
+{
+	public static void main (String[] args) throws java.lang.Exception
+	{
+	   ParkingSystem parking = new ParkingSystem();
+	   ParkingManger lot = new ParkingManger(parking);
+	   Vehicle v1 = VehicleFactory.createVehicle("bike123", VehicleType.BIKE);
+	   Vehicle v2 = VehicleFactory.createVehicle("car345", VehicleType.CAR);
+	   lot.checkSpotStatus();
+	   lot.park(v1);
+	   lot.checkSpotStatus();
+	}
 }
 
-// Usage Example
-public class Main {
-    public static void main(String[] args) {
-        ParkingLot parkingLot = new SimpleParkingLot(5);
-        ParkingLotManager manager = new ParkingLotManager(parkingLot);
 
-        Vehicle car1 = new Vehicle("ABC-123", VehicleType.CAR);
-        Vehicle car2 = new Vehicle("XYZ-789", VehicleType.MOTORCYCLE);
 
-        System.out.println("Parking car1: " + manager.park(car1)); // true
-        System.out.println("Parking car2: " + manager.park(car2)); // true
-        System.out.println("Removing car1: " + manager.remove("ABC-123")); // true
-    }
-}
+VehicleType (enum) – Defines types of vehicles: CAR and BIKE.
+
+Vehicle (abstract class) – A base class for all vehicles, storing vehicle number and type.
+
+Car (class) – Inherits from Vehicle, represents a car.
+
+Bike (class) – Inherits from Vehicle, represents a bike.
+
+VehicleFactory (class) – Uses factory pattern to create Car or Bike objects based on input.
+
+Spot (class) – Represents one parking spot, tracks whether it's empty or not.
+
+ParkingSystem (class) – Creates and stores a list of 10 parking spots.
+
+ParkingManger (class) – Handles parking, unparking, and showing parking status.
+
+Codechef (class) – The main class where the program runs: creates vehicles, parks them, and checks status.
