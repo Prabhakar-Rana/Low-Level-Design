@@ -1,0 +1,226 @@
+// funtional requirement:
+// -- user can select item
+// -- user can put coin
+// -- Machine can despense the item (product)
+
+
+// // non-funtional requirement
+//     -- system should be extendable, reliable (use state design pattern), threadsafe...
+
+
+// Entity relationship
+// -- item (coke, price)
+// -- slots (item, number of item)
+// -- Coins (1, 2, 5, 10)
+// -- VendingMachine (slots) (state desing pattern)
+
+
+
+
+import java.util.*;
+
+
+
+
+enum Coin {
+    ONE(1),
+        TWO(2),
+        FIVE(5),
+        TEN(10),
+
+
+        public final int value;
+    public Coin(int value) {
+        this.value = value;
+    }
+}
+
+
+class Item {
+    public String product;
+    public int price;
+    public Item(String product, int price) {
+        this.product = product;
+        this.price = price;
+    }
+}
+
+
+class Slot {
+    public Item item;
+    public int numberOfItem;
+    public Slot(Item item, int numberOfItem) {
+        this.item;
+        this.numberOfItem = numberOfItem;
+    }
+    
+    public void dispatch() {
+        if(numberOfItem>0) {
+            numberOfItem--;
+        }
+    }
+}
+
+
+class VendingMachine {
+    public Map < String, Slot > slots;
+    public int amount = 0;
+    public Slot selectedSlot;
+    
+    public State currentState;
+    public IdleState idleState;
+    public HasMoneyState hasMoneyState;
+    public DespenseState despenseState;
+    
+    public VendingMachine() {
+        slots = new HashMap < > ();
+        idleState = new IdleState(this);
+        hasMoneyState = new HasMoneyState(this);
+        despenseState = new DespenseState(this);
+    }
+    
+    public void changeState(State state) {
+        this.currentState = state;
+    }
+
+
+    public void addSlot(String id, Slot slot) {
+        slots.put(id, slot);
+    }
+    
+    public void setSelectedSlot(Slot selectedSlot) {
+        this.selectedSlot = selectedSlot;
+    }
+
+    public int despenseChange(int change) {
+        return change;
+    }
+
+    public void cencel() {
+        currentState.cencel();
+    }
+
+    public void addMoney(int amount) {
+        amount += amount;
+    }
+}
+
+
+interface State {
+    public void insertCoin(Coin coin);
+    public void selectProduct();
+    public void despenseProduct();
+    public void cencel();
+}
+
+
+class IdleState implements State {
+    
+    VendingMachine vm;
+    public IdleState(VendingMachine vm) {
+        this.vm = vm;
+    }
+    public void insertCoin(int coin) {
+       vm.addMoney(coin)
+       vm.
+    }
+
+
+    public void selectProduct() {
+        throw new RuntimeException("There is no money in Machine...");
+    }
+
+
+    public void despenseProduct() {
+        throw new RuntimeException("There is no money in Machine...");
+    }
+
+
+    public void cencel() {
+        throw new RuntimeException("There is no money in Machine...");
+    }
+}
+
+
+class HasMoneyState implements State {
+    
+    VendingMachine vm;
+    public IdleState(VendingMachine vm) {
+        this.vm = vm;
+    }
+    public void insertCoin(int coin) {
+       vm.addMoney(coin)
+    }
+
+
+    public void selectProduct(String code) {
+       Slot slot = vm.slots;
+       if(!slot.containsKey(code)) {
+           System.out.println("theres is no product...");
+       }
+       
+       vm.setSelectedSlot(slot.get(code));
+    }
+
+
+    public void despenseProduct() {
+       System.out.println("Select the product first...");
+    }
+
+    public void cencel() {
+       System.out.println("Cencel the request, return the amount", + vm.amount);
+       vm.amount = 0;
+       vm.changeState(vm.IdleState);
+    }
+}
+
+
+class DespenseState implements State {
+    
+    VendingMachine vm;
+    public IdleState(VendingMachine vm) {
+        this.vm = vm;
+    }
+    public void insertCoin(int coin) {
+       System.out.println("cannot add money despensing in in progress...");
+    }
+
+
+    public void selectProduct() {
+       System.out.println("despensing in in progress...");
+    }
+
+
+    public void despenseProduct() {
+        Slot slot = vm.selectedSlot;
+        
+        int change = vm.amount - slot.item.price;
+        
+        if(change<0) {
+            System.out.println("amount is not sufficient...");
+        }
+        
+        slot.despenseProduct();
+        if(change>0) vm.despenseChange(change);
+        vm.changeState(vm.idleState);
+        
+    }
+
+
+    public void cencel() {
+       System.out.println("Could not cencel it...");
+    }
+}
+
+
+public class Main {
+    public static void main(String[] args) {
+        VendingMachine vm = new VendingMachine();
+        vm.addSlot("A1", new Slot(new Item("Coke", 12), 2));
+        vm.addSlot("A2", new Slot(new Item("Cake", 10), 3));
+        vm.selectSlot("A2");
+        vm.addMoney(12);
+
+
+    }
+}
