@@ -1,0 +1,205 @@
+/*
+    User can create groups  
+    User can add expenses
+    Expense can be split in different ways
+    System keeps track of the balance sheet of every user 
+    User can settle debts
+
+
+    NFR:
+     -- Thread-safe 
+     -- extensibility
+        --> multiple types of spliting
+        --> multiple types of payments
+
+ */
+
+*********** CODE ************
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+class User {
+    String userId;
+    String name;
+    String email;
+
+    User(String userId, String name, String email) {
+        this.userId = userId;
+        this.name = name;
+        this.email = email;
+    }
+}
+
+class Group {
+    String groupId;
+    String name;
+    List<User> members = new ArrayList<>();
+
+    Group(String groupId, String name) {
+        this.groupId = groupId;
+        this.name = name;
+    }
+}
+
+abstract class Split {
+    User user;
+    double amount;
+
+    Split(User user) {
+        this.user = user;
+    }
+}
+
+class EqualSplit extends Split {
+
+    EqualSplit(User user, double amount) {
+        super(user);
+        this.amount = amount;
+    }
+}
+
+class ExactSplit extends Split {
+
+    ExactSplit(User user, double amount) {
+        super(user);
+        this.amount = amount;
+    }
+}
+
+class PercentageSplit extends Split {
+
+    double percentage;
+
+    PercentageSplit(User user, double percentage) {
+        super(user);
+        this.percentage = percentage;
+    }
+}
+
+class Expense {
+    String expenseId;
+    User paidBy;
+    double amount;
+    List<Split> splits;
+
+    Expense(String expenseId,
+            User paidBy,
+            double amount,
+            List<Split> splits) {
+
+        this.expenseId = expenseId;
+        this.paidBy = paidBy;
+        this.amount = amount;
+        this.splits = splits;
+    }
+}
+
+class BalanceManager {
+
+    // A -> B = 100 means B owes A 100
+    Map<User, Map<User, Double>> balances =
+            new ConcurrentHashMap<>();
+
+    synchronized void updateBalances(Expense expense) {
+
+        User paidBy = expense.paidBy;
+
+        balances.putIfAbsent(
+                paidBy,
+                new ConcurrentHashMap<>());
+
+        for (Split split : expense.splits) {
+
+            User borrower = split.user;
+
+            if (borrower == paidBy) {
+                continue;
+            }
+
+            balances.putIfAbsent(
+                    borrower,
+                    new ConcurrentHashMap<>());
+
+            balances.get(paidBy)
+                    .merge(borrower,
+                            split.amount,
+                            Double::sum);
+
+            balances.get(borrower)
+                    .merge(paidBy,
+                            -split.amount,
+                            Double::sum);
+        }
+    }
+
+    void showBalances() {
+
+        for (User lender : balances.keySet()) {
+
+            for (Map.Entry<User, Double> entry :
+                    balances.get(lender).entrySet()) {
+
+                if (entry.getValue() > 0) {
+
+                    System.out.println(
+                            entry.getKey().name +
+                            " owes " +
+                            lender.name +
+                            " ₹" +
+                            entry.getValue()
+                    );
+                }
+            }
+        }
+    }
+}
+
+class ExpenseManager {
+
+    BalanceManager balanceManager =
+            new BalanceManager();
+
+    void addExpense(Expense expense) {
+        balanceManager.updateBalances(expense);
+    }
+
+    void showBalances() {
+        balanceManager.showBalances();
+    }
+}
+
+public class SplitWiseDemo {
+
+    public static void main(String[] args) {
+
+        User u1 = new User("U1", "Prabhakar", "p@gmail.com");
+        User u2 = new User("U2", "Rahul", "r@gmail.com");
+        User u3 = new User("U3", "Amit", "a@gmail.com");
+
+        Group tripGroup = new Group("G1", "Goa Trip");
+        tripGroup.members.add(u1);
+        tripGroup.members.add(u2);
+        tripGroup.members.add(u3);
+
+        ExpenseManager expenseManager = new ExpenseManager();
+
+        // Prabhakar paid ₹3000 equally for all 3 members
+        List<Split> splits = new ArrayList<>();
+
+        splits.add(new EqualSplit(u1, 1000));
+        splits.add(new EqualSplit(u2, 1000));
+        splits.add(new EqualSplit(u3, 1000));
+
+        Expense expense = new Expense(
+                "E1",
+                u1,
+                3000,
+                splits
+        );
+
+        expenseManager.addExpense(expense);
+
+        expenseManager.showBalances();
+    }
+}
