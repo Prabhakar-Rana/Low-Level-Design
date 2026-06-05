@@ -1,0 +1,141 @@
+import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.lang.*;
+import java.io.*;
+
+@FunctionalInterface
+interface Task {
+    void execute();
+}
+
+class Worker implements Runnable {
+
+    BlockingQueue<Task> queue;
+    volatile boolean isRunning = true;
+
+    public Worker(BlockingQueue<Task> queue) {
+        this.queue = queue;
+    }
+
+    @Override
+    public void run() {
+
+        System.out.println(Thread.currentThread().getName() + " started");
+
+        while (isRunning) {
+            try {
+                // Waits here if queue is empty
+                Task task = queue.take();
+
+                System.out.println(
+                    Thread.currentThread().getName()
+                    + " picked a task"
+                );
+
+                task.execute();
+
+            } catch (InterruptedException e) {
+
+                System.out.println(
+                    Thread.currentThread().getName()
+                    + " stopped"
+                );
+
+                break;
+            }
+        }
+    }
+
+    public void shutdown() {
+        isRunning = false;
+    }
+}
+
+class ThreadPool {
+
+    BlockingQueue<Task> queue;
+    List<Worker> workers;
+    List<Thread> threads;
+
+    public ThreadPool(int numThreads) {
+
+        queue = new LinkedBlockingQueue<>();
+        workers = new ArrayList<>();
+        threads = new ArrayList<>();
+
+        for (int i = 0; i < numThreads; i++) {
+
+            Worker worker = new Worker(queue);
+            workers.add(worker);
+
+            Thread thread = new Thread(worker);
+            threads.add(thread);
+
+            thread.start();
+        }
+    }
+
+    public void addTask(Task task) {
+        queue.add(task);
+    }
+
+    public void shutdown() {
+
+        for (Worker worker : workers) {
+            worker.shutdown();
+        }
+
+        for (Thread thread : threads) {
+            thread.interrupt();
+        }
+    }
+}
+
+class Codechef {
+
+    public static void main(String[] args) throws Exception {
+
+        ThreadPool pool = new ThreadPool(3);
+
+        pool.addTask(() -> {
+            System.out.println(
+                "Task 1 executed by "
+                + Thread.currentThread().getName()
+            );
+        });
+
+        pool.addTask(() -> {
+            System.out.println(
+                "Task 2 executed by "
+                + Thread.currentThread().getName()
+            );
+        });
+
+        pool.addTask(() -> {
+            System.out.println(
+                "Task 3 executed by "
+                + Thread.currentThread().getName()
+            );
+        });
+
+        pool.addTask(() -> {
+            System.out.println(
+                "Task 4 executed by "
+                + Thread.currentThread().getName()
+            );
+        });
+
+        pool.addTask(() -> {
+            System.out.println(
+                "Task 5 executed by "
+                + Thread.currentThread().getName()
+            );
+        });
+
+        // Wait so workers can finish tasks
+        Thread.sleep(2000);
+
+        pool.shutdown();
+    }
+}
