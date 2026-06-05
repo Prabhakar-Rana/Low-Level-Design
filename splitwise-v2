@@ -1,0 +1,232 @@
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+class User {
+    String userId;
+    String name;
+    String email;
+
+    User(String userId, String name, String email) {
+        this.userId = userId;
+        this.name = name;
+        this.email = email;
+    }
+}
+
+class Group {
+    String groupId;
+    String name;
+    List<User> members = new ArrayList<>();
+
+    Group(String groupId, String name) {
+        this.groupId = groupId;
+        this.name = name;
+    }
+}
+
+abstract class Split {
+    User user;
+    double amount;
+
+    Split(User user) {
+        this.user = user;
+    }
+}
+
+class EqualSplit extends Split {
+
+    EqualSplit(User user, double amount) {
+        super(user);
+        this.amount = amount;
+    }
+}
+
+class ExactSplit extends Split {
+
+    ExactSplit(User user, double amount) {
+        super(user);
+        this.amount = amount;
+    }
+}
+
+class PercentageSplit extends Split {
+
+    double percentage;
+
+    PercentageSplit(User user, double percentage) {
+        super(user);
+        this.percentage = percentage;
+    }
+}
+
+/*
+ * STRATEGY
+ */
+interface SplitStrategy {
+    List<Split> calculateSplits(
+            double amount,
+            List<User> users);
+}
+
+class EqualSplitStrategy implements SplitStrategy {
+
+    @Override
+    public List<Split> calculateSplits(
+            double amount,
+            List<User> users) {
+
+        List<Split> splits = new ArrayList<>();
+
+        double share = amount / users.size();
+
+        for (User user : users) {
+            splits.add(
+                    new EqualSplit(
+                            user,
+                            share));
+        }
+
+        return splits;
+    }
+}
+
+class Expense {
+    String expenseId;
+    User paidBy;
+    double amount;
+    List<Split> splits;
+
+    Expense(String expenseId,
+            User paidBy,
+            double amount,
+            List<Split> splits) {
+
+        this.expenseId = expenseId;
+        this.paidBy = paidBy;
+        this.amount = amount;
+        this.splits = splits;
+    }
+}
+
+class BalanceManager {
+
+    Map<User, Map<User, Double>> balances =
+            new ConcurrentHashMap<>();
+
+    synchronized void updateBalances(Expense expense) {
+
+        User paidBy = expense.paidBy;
+
+        balances.putIfAbsent(
+                paidBy,
+                new ConcurrentHashMap<>());
+
+        for (Split split : expense.splits) {
+
+            User borrower = split.user;
+
+            if (borrower == paidBy) {
+                continue;
+            }
+
+            balances.putIfAbsent(
+                    borrower,
+                    new ConcurrentHashMap<>());
+
+            balances.get(paidBy)
+                    .merge(
+                            borrower,
+                            split.amount,
+                            Double::sum);
+
+            balances.get(borrower)
+                    .merge(
+                            paidBy,
+                            -split.amount,
+                            Double::sum);
+        }
+    }
+
+    void showBalances() {
+
+        for (User lender : balances.keySet()) {
+
+            for (Map.Entry<User, Double> entry :
+                    balances.get(lender).entrySet()) {
+
+                if (entry.getValue() > 0) {
+
+                    System.out.println(
+                            entry.getKey().name
+                                    + " owes "
+                                    + lender.name
+                                    + " ₹"
+                                    + entry.getValue());
+                }
+            }
+        }
+    }
+}
+
+class ExpenseManager {
+
+    BalanceManager balanceManager =
+            new BalanceManager();
+
+    void addExpense(Expense expense) {
+        balanceManager.updateBalances(expense);
+    }
+
+    void showBalances() {
+        balanceManager.showBalances();
+    }
+}
+
+public class SplitWiseDemo {
+
+    public static void main(String[] args) {
+
+        User u1 =
+                new User("U1",
+                        "Prabhakar",
+                        "p@gmail.com");
+
+        User u2 =
+                new User("U2",
+                        "Rahul",
+                        "r@gmail.com");
+
+        User u3 =
+                new User("U3",
+                        "Amit",
+                        "a@gmail.com");
+
+        List<User> users =
+                Arrays.asList(u1, u2, u3);
+
+        /*
+         * Choose Strategy
+         */
+        SplitStrategy strategy =
+                new EqualSplitStrategy();
+
+        List<Split> splits =
+                strategy.calculateSplits(
+                        3000,
+                        users);
+
+        Expense expense =
+                new Expense(
+                        "E1",
+                        u1,
+                        3000,
+                        splits);
+
+        ExpenseManager expenseManager =
+                new ExpenseManager();
+
+        expenseManager.addExpense(expense);
+
+        expenseManager.showBalances();
+    }
+}
