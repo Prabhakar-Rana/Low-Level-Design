@@ -1,0 +1,255 @@
+import java.util.*;
+import java.util.concurrent.*;
+
+/**
+ * PAYMENT GATEWAY - LLD (50-min interview scope)
+ *
+ * Functional Requirements:
+ *  - Accept a payment request for an order (amount + currency) via a chosen
+ *    payment method (credit card / UPI).
+ *  - Validate the request (amount, currency, method-specific details) before
+ *    attempting to charge.
+ *  - Charge the order through a payment gateway and return a transaction
+ *    result (success / failure).
+ *  - Safely handle retried/duplicate requests for the same payment (client
+ *    retries, network blips) without double-charging the user.
+ *
+ * Non-Functional Requirements:
+ *  - Idempotency: identical requests (same idempotency key) must not result
+ *    in more than one charge, even under concurrent retries.
+ *  - Extensibility: adding a new payment method or a new payment gateway
+ *    vendor should not require changes to the core orchestration logic.
+ *  - Consistency over latency: prefer rejecting/queuing a concurrent
+ *    duplicate over risking a double charge.
+ *  - Thread-safety: multiple requests for the same key can arrive
+ *    concurrently and must be handled correctly.
+ */
+public class PaymentGatewayInterview {
+
+    // ---------- ENUMS ----------
+    enum PaymentMethodType { CREDIT_CARD, UPI }
+    enum TransactionStatus { CREATED, SUCCESS, FAILED }
+    enum IdempotencyStatus { IN_PROGRESS, COMPLETED }
+
+    // ---------- CORE ENTITIES ----------
+    static class Order {
+        final String orderId, userId, currency;
+        final double amount;
+        Order(String orderId, String userId, double amount, String currency) {
+            this.orderId = orderId; this.userId = userId;
+            this.amount = amount; this.currency = currency;
+        }
+    }
+
+    static class PaymentRequest {
+        final String idempotencyKey;
+        final Order order;
+        final PaymentMethodType methodType;
+        final Map<String, String> details;
+        PaymentRequest(String idempotencyKey, Order order, PaymentMethodType methodType,
+                       Map<String, String> details) {
+            this.idempotencyKey = idempotencyKey; this.order = order;
+            this.methodType = methodType;
+            this.details = details;
+        }
+    }
+
+    static class GatewayResponse {
+        final boolean success;
+        final String gatewayTxnId, message;
+        GatewayResponse(boolean success, String gatewayTxnId, String message) {
+            this.success = success; this.gatewayTxnId = gatewayTxnId; this.message = message;
+        }
+    }
+
+    static class PaymentResponse {
+        final String transactionId;
+        final TransactionStatus status;
+        final String message;
+        PaymentResponse(String transactionId, TransactionStatus status, String message) {
+            this.transactionId = transactionId; this.status = status; this.message = message;
+        }
+        @Override public String toString() {
+            return "PaymentResponse{txnId=" + transactionId + ", status=" + status + ", msg=" + message + "}";
+        }
+    }
+
+    static class Transaction {
+        final String transactionId;
+        final Order order;
+        TransactionStatus status;
+        String gatewayTxnId;
+        Transaction(Order order) {
+            this.transactionId = "TXN-" + UUID.randomUUID();
+            this.order = order;
+            this.status = TransactionStatus.CREATED;
+        }
+    }
+
+    // ---------- EXCEPTIONS ----------
+    static class ValidationException extends RuntimeException {
+        ValidationException(String msg) { super(msg); }
+    }
+    static class DuplicateInProgressException extends RuntimeException {
+        DuplicateInProgressException(String msg) { super(msg); }
+    }
+
+    // ---------- STRATEGY: payment method validation ----------
+    interface PaymentMethod {
+        void validate(PaymentRequest request);
+    }
+
+    static class CreditCardPayment implements PaymentMethod {
+        public void validate(PaymentRequest r) {
+            String card = r.details.get("cardNumber");
+            if (card == null || card.length() < 13) throw new ValidationException("Invalid card number");
+        }
+    }
+
+    static class UpiPayment implements PaymentMethod {
+        public void validate(PaymentRequest r) {
+            String upi = r.details.get("upiId");
+            if (upi == null || !upi.contains("@")) throw new ValidationException("Invalid UPI id");
+        }
+    }
+
+    static class PaymentMethodFactory {
+        private static final Map<PaymentMethodType, PaymentMethod> MAP = Map.of(
+                PaymentMethodType.CREDIT_CARD, new CreditCardPayment(),
+                PaymentMethodType.UPI, new UpiPayment()
+        );
+        static PaymentMethod get(PaymentMethodType type) { return MAP.get(type); }
+    }
+
+    // ---------- ADAPTER: PaymentGateway normalizes the vendor SDK's own shape ----------
+    // Talking point: PaymentService depends only on this interface, never on
+    // RazorpayGateway directly. Swapping or adding a vendor later means a new
+    // class implementing PaymentGateway - zero changes to PaymentService.
+    interface PaymentGateway {
+        GatewayResponse charge(PaymentRequest request);
+    }
+
+    /** Only concrete gateway for now - amounts in paise, its own result shape. */
+    static class RazorpayGateway implements PaymentGateway {
+        public GatewayResponse charge(PaymentRequest r) {
+            long paise = Math.round(r.order.amount * 100);
+            // pretend network call...
+            return new GatewayResponse(true, "rzp_" + UUID.randomUUID(), "Payment captured");
+        }
+    }
+
+    // NOTE: no PaymentGatewayFactory / GatewayProvider enum for now - out of
+    // scope for this pass. If a second vendor (e.g. Stripe) were needed, the
+    // plan is: add a StripeGateway implementing PaymentGateway (different
+    // amount unit - cents, different response shape), then either inject the
+    // right PaymentGateway into PaymentService per-request or add a small
+    // factory keyed off a provider field on PaymentRequest. PaymentService's
+    // orchestration logic wouldn't change either way.
+
+    // ---------- CHAIN OF RESPONSIBILITY: pre-charge validation ----------
+    abstract static class PaymentValidator {
+        private PaymentValidator next;
+        PaymentValidator setNext(PaymentValidator next) { this.next = next; return next; }
+        void validate(PaymentRequest r) {
+            check(r);
+            if (next != null) next.validate(r);
+        }
+        abstract void check(PaymentRequest r);
+    }
+
+    static class AmountValidator extends PaymentValidator {
+        void check(PaymentRequest r) {
+            if (r.order.amount <= 0) throw new ValidationException("Amount must be positive");
+        }
+    }
+
+    static class CurrencyValidator extends PaymentValidator {
+        private static final Set<String> SUPPORTED = Set.of("INR", "USD");
+        void check(PaymentRequest r) {
+            if (!SUPPORTED.contains(r.order.currency)) throw new ValidationException("Unsupported currency");
+        }
+    }
+
+    // ---------- IDEMPOTENCY STORE ----------
+    static class IdempotencyRecord {
+        volatile IdempotencyStatus status = IdempotencyStatus.IN_PROGRESS;
+        volatile PaymentResponse response;
+    }
+
+    static class IdempotencyStore {
+        private final ConcurrentHashMap<String, IdempotencyRecord> store = new ConcurrentHashMap<>();
+
+        /** null -> caller claimed the key; else someone already owns/finished it. */
+        IdempotencyRecord getOrClaim(String key) {
+            return store.putIfAbsent(key, new IdempotencyRecord());
+        }
+
+        void markCompleted(String key, PaymentResponse response) {
+            IdempotencyRecord rec = store.get(key);
+            rec.response = response;
+            rec.status = IdempotencyStatus.COMPLETED;
+        }
+    }
+
+    // ---------- SINGLETON FACADE ----------
+    static class PaymentService {
+        private static final PaymentService INSTANCE = new PaymentService();
+        private final IdempotencyStore idempotencyStore = new IdempotencyStore();
+        private final PaymentGateway gateway = new RazorpayGateway();
+        private PaymentService() {}
+        static PaymentService getInstance() { return INSTANCE; }
+
+        PaymentResponse processPayment(PaymentRequest request) {
+            IdempotencyRecord existing = idempotencyStore.getOrClaim(request.idempotencyKey);
+            if (existing != null) {
+                if (existing.status == IdempotencyStatus.COMPLETED) return existing.response;
+                throw new DuplicateInProgressException("Duplicate request already in progress: " + request.idempotencyKey);
+            }
+
+            try {
+                Transaction txn = new Transaction(request.order);
+
+                buildValidatorChain().validate(request);
+                PaymentMethodFactory.get(request.methodType).validate(request);
+
+                GatewayResponse gw = gateway.charge(request);
+                txn.gatewayTxnId = gw.gatewayTxnId;
+                txn.status = gw.success ? TransactionStatus.SUCCESS : TransactionStatus.FAILED;
+
+                PaymentResponse response = new PaymentResponse(txn.transactionId, txn.status, gw.message);
+                idempotencyStore.markCompleted(request.idempotencyKey, response);
+                return response;
+
+            } catch (ValidationException ex) {
+                PaymentResponse failed = new PaymentResponse(null, TransactionStatus.FAILED, ex.getMessage());
+                idempotencyStore.markCompleted(request.idempotencyKey, failed);
+                return failed;
+            }
+        }
+
+        private PaymentValidator buildValidatorChain() {
+            PaymentValidator chain = new AmountValidator();
+            chain.setNext(new CurrencyValidator());
+            return chain;
+        }
+    }
+
+    // ---------- DEMO ----------
+    public static void main(String[] args) {
+        PaymentService service = PaymentService.getInstance();
+
+        Order order = new Order("ORDER-1", "USER-1", 499.0, "INR");
+        PaymentRequest request = new PaymentRequest(
+                "idem-key-1", order, PaymentMethodType.UPI,
+                Map.of("upiId", "user@upi"));
+
+        System.out.println("First call:  " + service.processPayment(request));
+        System.out.println("Duplicate:   " + service.processPayment(request)); // cache hit, no re-charge
+
+        Order badOrder = new Order("ORDER-2", "USER-2", 200.0, "JPY");
+        PaymentRequest badRequest = new PaymentRequest(
+                "idem-key-2", badOrder, PaymentMethodType.CREDIT_CARD,
+                Map.of("cardNumber", "4111111111111111"));
+        System.out.println("Bad currency:" + service.processPayment(badRequest));
+    }
+}
